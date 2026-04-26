@@ -12,6 +12,7 @@ import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
+import path from 'path';
 
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -25,8 +26,16 @@ export function profileImageUrlUpload () {
           if (!response.ok || !response.body) {
             throw new Error('url returned a non-OK status code or an empty body')
           }
-          const ext = ['jpg', 'jpeg', 'png', 'svg', 'gif'].includes(url.split('.').slice(-1)[0].toLowerCase()) ? url.split('.').slice(-1)[0].toLowerCase() : 'jpg'
-          const fileStream = fs.createWriteStream(`frontend/dist/frontend/assets/public/images/uploads/${loggedInUser.data.id}.${ext}`, { flags: 'w' })
+          const rawExt = url.split('.').slice(-1)[0].toLowerCase()
+          const allowedExts = ['jpg', 'jpeg', 'png', 'svg', 'gif']
+          const ext = allowedExts.includes(rawExt) ? rawExt : 'jpg'
+          const uploadDir = path.resolve('frontend/dist/frontend/assets/public/images/uploads')
+          const filePath = path.resolve(uploadDir, `${loggedInUser.data.id}.${ext}`)
+          if (!filePath.startsWith(uploadDir)) {
+            next(new Error('Blocked illegal file path'))
+            return
+          }
+          const fileStream = fs.createWriteStream(filePath, { flags: 'w' })
           await finished(Readable.fromWeb(response.body as any).pipe(fileStream))
           const user = await UserModel.findByPk(loggedInUser.data.id)
           await user?.update({ profileImage: `/assets/public/images/uploads/${loggedInUser.data.id}.${ext}` })
